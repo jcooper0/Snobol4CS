@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "TranslateParser": {
+      "commandName": "Project",
+      "commandLineArgs": "..\\..\\..\\grammar ..\\..\\..\\..\\Snobol4\\grammar.cs Snobol4"
+    }
+  }
+}
