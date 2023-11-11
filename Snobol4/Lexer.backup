@@ -1,0 +1,933 @@
+﻿using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+
+[assembly: InternalsVisibleTo("TestLex")]
+namespace Snobol4
+{
+    public class Lexer
+    {
+        #region Precedence and Associaton Documenation
+
+        /*  
+        ~	    R	12
+        ?   	L	12
+        $	    L	11
+        .	    L	11
+        ! ,**,^	R	10
+        %	    L	9
+        *	    L	8
+        /	    L	7
+        #	    L	6
+        +	    L	5
+        -	    L	5
+        @	    L	4
+        blank	L	3
+        |	    L	2
+        &	    L	1
+        =	    R	
+        */
+
+        #endregion
+
+        #region Properties
+
+        internal string Input { get; set; } = null!;
+        internal SourceLine? Source { get; set; } = null;
+        internal int CursorCurrent { get; set; } = 0;
+        internal int CursorStart { get; set; } = 0;
+        internal bool ColonFound { get; set; } = false;
+        internal int SecondGotoPosition { get; set; } = -1;
+
+        #endregion
+
+        #region Enumerations
+
+        private enum CharacterClassType
+        {
+            NONE,
+            ALPHA,
+            DELIMITER,
+            DIGIT,
+            EQUAL,
+            OPERATOR,
+            QUOTE,
+            WHITESPACE
+        }
+
+        #endregion
+
+        #region Static Table Builders
+
+        private static bool[] Any(string str)
+        {
+            bool[] result = new bool[256];
+            for (int i = 0; i < 256; ++i)
+            {
+                result[i] = false;
+            }
+
+            foreach (char j in str)
+            {
+                result[j] = true;
+            }
+
+            return result;
+        }
+
+        private static bool[] NotAny(string str)
+        {
+            bool[] result = new bool[256];
+            for (int i = 0; i < 32; ++i)
+            {
+                result[i] = false;
+            }
+
+            result[9] = false;
+            for (int i = 32; i < 256; ++i)
+            {
+                result[i] = true;
+            }
+
+            foreach (char j in str)
+            {
+                result[j] = false;
+            }
+
+            return result;
+        }
+
+        private static CharacterClassType[] BuildCharacterClass()
+        {
+            CharacterClassType[] result = new CharacterClassType[256];
+            for (char c = '\0'; c < 255; ++c)
+            {
+                result[c] = CharacterClassType.NONE;
+                if (IsAlpha[c])
+                {
+                    result[c] = CharacterClassType.ALPHA;
+                    continue;
+                }
+
+                if (IsDelimiter[c])
+                {
+                    result[c] = CharacterClassType.DELIMITER;
+                    continue;
+                }
+
+                if (IsDigit[c])
+                {
+                    result[c] = CharacterClassType.DIGIT;
+                    continue;
+                }
+
+                if (c == '=')
+                {
+                    result[c] = CharacterClassType.EQUAL;
+                    continue;
+                }
+
+                if (IsOperator[c])
+                {
+                    result[c] = CharacterClassType.OPERATOR;
+                    continue;
+                }
+
+                if (IsQuote[c])
+                {
+                    result[c] = CharacterClassType.QUOTE;
+                    continue;
+                }
+
+                if (IsWhiteSpace[c])
+                {
+                    result[c] = CharacterClassType.WHITESPACE;
+                }
+
+            }
+
+            return result;
+        }
+
+        #endregion
+
+        #region Static Lexing Tables
+
+        private static readonly bool[] IsAlpha =
+            Any("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+        private static readonly bool[] IsAlphaNumericIdentifier =
+            Any("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._");
+
+        private static readonly bool[] IsBreak = Any(":");
+        private static readonly bool[] IsDelimiter = Any("()[]<>:,");
+        private static readonly bool[] IsDigit = Any("0123456789");
+        private static readonly bool[] IsIdentifierTerminator = Any("\t (),<>[]");
+        private static readonly bool[] IsLiteralTerminator = Any("\t ),>]");
+        private static readonly bool[] IsUnaryOperator = Any(@"~?$.!^%*/#+-@|&");
+        private static readonly bool[] IsOperator = Any("&@$!^#-%.|+?*/~");
+        private static readonly bool[] IsPlusMinus = Any("+-");
+        private static readonly bool[] IsQuote = Any("'\"");
+        private static readonly bool[] IsWhiteSpace = Any(" \t");
+
+        private static readonly bool[] IsNotAlpha =
+            NotAny("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+        private static readonly bool[] IsNotDigitPlusMinus = NotAny("+-0123456789");
+        private static readonly bool[] IsNotLiteralTerminator = NotAny("\t ),>]<");
+
+        private static readonly bool[] IsNotAlphaNumeric =
+            NotAny("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+        private static readonly bool[] IsNotWhiteSpace = NotAny(" \t");
+
+        private static readonly char[] FloatChars = { '.', 'e', 'E' };
+
+        private static readonly CharacterClassType[] CharacterClass = BuildCharacterClass();
+
+        internal static readonly Regex Quotes = new("\"(.*?)\"|'(.*?)'", RegexOptions.Compiled);
+        internal static readonly Regex GotoField = new("[fFsS]?[\\(<]", RegexOptions.Compiled);
+
+        internal static readonly Regex BalancedParen = new("\\((?:[^()]|(?<open>\\()|(?<-open>\\)))+(?(open)(?!))\\)",
+            RegexOptions.Compiled);
+
+        internal static readonly Regex BalancedAngle = new("\\<(?:[^()]|(?<open>\\<)|(?<-open>\\>))+(?(open)(?!))\\>",
+            RegexOptions.Compiled);
+
+        #endregion
+
+        #region Lexeme Matchers
+
+        internal Token MatchDelimiter()
+        {
+            switch (Input[CursorCurrent++])
+            {
+                case '<':
+                    if (CursorCurrent < 3 && IsWhiteSpace[Input[CursorCurrent - 2]])
+                        throw new SyntaxError(SyntaxError.ErrorType.UNEXPECTED_CHARACTER, CursorCurrent - 1, Source);
+                    return new Token(Token.Type.L_ANGLE, "<", CursorStart, CursorCurrent);
+                case '(':
+                    //if (CursorCurrent < 3 && IsWhiteSpace[Input[CursorCurrent - 2]])
+                    //    return new Token(Token.Type.L_PAREN_WS, "(", CursorStart, CursorCurrent);
+                    return new Token(Token.Type.L_PAREN, "(", CursorStart, CursorCurrent);
+                case '[':
+                    return new Token(Token.Type.L_SQUARE, "[", CursorStart,
+                        CursorCurrent);
+                case '>':
+                    return new Token(Token.Type.R_ANGLE, ">", CursorStart, CursorCurrent);
+                case ']':
+                    return new Token(Token.Type.R_SQUARE, "]", CursorStart, CursorCurrent);
+                case ')':
+                    return new Token(Token.Type.R_PAREN, ")", CursorStart, CursorCurrent);
+                case ',':
+                    return new Token(Token.Type.COMMA, ",", CursorStart, CursorCurrent);
+                case ':':
+                    ColonFound = true;
+                    return new Token(Token.Type.COLON, ":", CursorStart, CursorCurrent);
+            }
+
+            throw new SyntaxError(SyntaxError.ErrorType.ILLEGAL_CHARACTER_IN_ELEMENT, CursorCurrent + 1,
+                Source);
+        }
+
+        internal Token MatchEqual()
+        {
+            int cursor = CursorCurrent++;
+            while (++cursor < Input.Length && IsWhiteSpace[Input[cursor]])
+            {
+            }
+
+            if (cursor == Input.Length || IsBreak[Input[cursor]])
+                return new Token(Token.Type.UNARY_EQUAL, Input[CursorStart..CursorCurrent], CursorStart,
+                    CursorCurrent);
+            return new Token(Token.Type.BINARY_EQUAL, Input[CursorStart..CursorCurrent], CursorStart,
+                CursorCurrent);
+        }
+
+        internal Token MatchNumber()
+        {
+            if (IsNotDigitPlusMinus[Input[CursorCurrent]])
+                throw new SyntaxError(SyntaxError.ErrorType.ERRONEOUS_INTEGER, CursorStart, Source);
+
+            while (++CursorCurrent < Input.Length && IsNotLiteralTerminator[Input[CursorCurrent]])
+            {
+            }
+
+            if (long.TryParse(Input[CursorStart..CursorCurrent], out _))
+                return new Token(Token.Type.INTEGER, Input[CursorStart..CursorCurrent], CursorStart,
+                    CursorCurrent);
+
+            if (double.TryParse(Input[CursorStart..CursorCurrent], out _))
+                return new Token(Token.Type.REAL, Input[CursorStart..CursorCurrent], CursorStart,
+                    CursorCurrent);
+
+            SyntaxError.ErrorType code = Input[CursorStart..CursorCurrent].IndexOfAny(FloatChars) > -1
+                ? SyntaxError.ErrorType.ERRONEOUS_REAL_NUMBER
+                : SyntaxError.ErrorType.ERRONEOUS_INTEGER;
+
+            throw new SyntaxError(code, CursorStart, Source);
+        }
+
+        internal Token MatchIdentifier()
+        {
+            if (IsNotAlpha[Input[CursorCurrent]])
+                throw new SyntaxError(SyntaxError.ErrorType.ILLEGAL_CHARACTER_IN_ELEMENT, CursorCurrent, Source);
+
+            while (++CursorCurrent < Input.Length && IsAlphaNumericIdentifier[Input[CursorCurrent]])
+            {
+            }
+
+            if (CursorCurrent == Input.Length || IsIdentifierTerminator[Input[CursorCurrent]])
+                return new Token(Token.Type.IDENTIFIER, Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+
+            throw new SyntaxError(SyntaxError.ErrorType.ILLEGAL_CHARACTER_IN_ELEMENT, CursorCurrent, Source);
+        }
+
+        internal Token MatchOperator()
+        {
+
+            char operatorChar = Input[CursorCurrent];
+            CursorCurrent++;
+
+            if (CursorCurrent == Input.Length)
+            {
+                CursorCurrent = CursorStart;
+                throw new SyntaxError(SyntaxError.ErrorType.BINARY_OPERATOR_MISSING_OR_IN_ERROR, CursorCurrent, Source);
+            }
+
+            if (CursorCurrent > 1 && IsWhiteSpace[Input[CursorCurrent - 2]] && IsWhiteSpace[Input[CursorCurrent]])
+            {
+                switch (operatorChar)
+                {
+                    case '~':
+                        return new Token(Token.Type.BINARY_TILDE, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '?':
+                        return new Token(Token.Type.BINARY_QUESTION, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '$':
+                        return new Token(Token.Type.BINARY_DOLLAR, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '.':
+                        return new Token(Token.Type.BINARY_PERIOD, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '!':
+                    case '^':
+                        return new Token(Token.Type.BINARY_CARET, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '%':
+                        return new Token(Token.Type.BINARY_PERCENT, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '*':
+                        return new Token(Token.Type.BINARY_STAR, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '/':
+                        return new Token(Token.Type.BINARY_SLASH, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '#':
+                        return new Token(Token.Type.BINARY_HASH, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '+':
+                        return new Token(Token.Type.BINARY_PLUS, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '-':
+                        return new Token(Token.Type.BINARY_MINUS, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '@':
+                        return new Token(Token.Type.BINARY_AT, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '|':
+                        return new Token(Token.Type.BINARY_PIPE, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                    case '&':
+                        return new Token(Token.Type.BINARY_AMPERSAND, Input[CursorStart..CursorCurrent], CursorStart,
+                            CursorCurrent);
+                }
+            }
+            else if (CursorCurrent > 1 && // Special case for **
+                     CursorCurrent + 1 < Input.Length &&
+                     IsWhiteSpace[Input[CursorCurrent - 2]] &&
+                     operatorChar == '*' &&
+                     Input[CursorCurrent] == '*' &&
+                     IsWhiteSpace[Input[CursorCurrent + 1]])
+            {
+                CursorCurrent += 2;
+                return new Token(Token.Type.BINARY_CARET, "^", CursorStart, CursorCurrent);
+            }
+            else
+            {
+                if (IsUnaryOperator[operatorChar])
+                    return new Token(Token.Type.UNARY, operatorChar.ToString(), CursorStart,
+                        CursorCurrent);
+            }
+
+            throw new ApplicationException("Unhandled operator in Lexer.MatchOperator");
+        }
+
+        internal Token MatchString()
+        {
+            if (Input[CursorCurrent] == '"')
+            {
+                while (++CursorCurrent < Input.Length && Input[CursorCurrent] != '"')
+                {
+                }
+            }
+            else
+            {
+                while (++CursorCurrent < Input.Length && Input[CursorCurrent] != '\'')
+                {
+                }
+            }
+
+            if (CursorCurrent == Input.Length)
+            {
+                CursorCurrent = CursorStart;
+                throw new SyntaxError(SyntaxError.ErrorType.UNCLOSED_LITERAL, CursorStart, Source);
+            }
+
+            CursorCurrent++;
+            if (CursorCurrent == Input.Length || IsLiteralTerminator[Input[CursorCurrent]])
+                return new Token(Token.Type.STRING, Input[(CursorStart + 1)..(CursorCurrent - 1)], CursorStart,
+                    CursorCurrent);
+
+            throw new SyntaxError(SyntaxError.ErrorType.ILLEGAL_CHARACTER_IN_ELEMENT, CursorCurrent, Source);
+        }
+
+        internal Token MatchWhiteSpace()
+        {
+            while (CursorCurrent < Input.Length && IsWhiteSpace[Input[CursorCurrent]])
+            {
+                CursorCurrent++;
+            }
+
+            if (CursorCurrent > CursorStart)
+                return new Token(Token.Type.SPACE, " ", CursorStart,
+                    CursorCurrent);
+
+            return Token.TokenNull;
+        }
+
+        internal Token MatchLabel()
+        {
+            if (IsNotAlphaNumeric[Input[CursorCurrent]])
+                throw new SyntaxError(SyntaxError.ErrorType.ERRONEOUS_LABEL, CursorCurrent, Source);
+
+            while (++CursorCurrent < Input.Length && IsNotWhiteSpace[Input[CursorCurrent]])
+            {
+            }
+
+            return new Token(Token.Type.LABEL, Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+        }
+
+        internal Token MatchStatement()
+        {
+            if (ColonFound)
+                return MatchFirstGoto();
+
+            if (CursorCurrent == SecondGotoPosition)
+                return MatchSecondGoto();
+
+            switch (CharacterClass[Input[CursorCurrent]])
+            {
+                case CharacterClassType.ALPHA:
+                    return MatchIdentifier();
+                case CharacterClassType.DIGIT:
+                    return MatchNumber();
+                case CharacterClassType.DELIMITER:
+                    return MatchDelimiter();
+                case CharacterClassType.EQUAL:
+                    return MatchEqual();
+                case CharacterClassType.NONE:
+                    throw new SyntaxError(SyntaxError.ErrorType.UNEXPECTED_CHARACTER, CursorCurrent, Source);
+                case CharacterClassType.QUOTE:
+                    return MatchString();
+                case CharacterClassType.OPERATOR:
+                    return MatchOperator();
+                case CharacterClassType.WHITESPACE:
+                    return MatchWhiteSpace();
+                default:
+                    throw new ApplicationException("Unhandled match type in Lexer.MatchStatement.");
+            }
+        }
+
+        internal Token MatchFirstGoto()
+        {
+            ColonFound = false;
+            Match gotoMatch = GotoField.Match(Input, CursorCurrent);
+
+            switch (gotoMatch.Length)
+            {
+                case 0:
+                    throw new SyntaxError(SyntaxError.ErrorType.ERROR_IN_GOTO, CursorCurrent, Source);
+                case 1:
+                    return Token.TokenNull;
+            }
+
+            string fs = gotoMatch.Value[^2].ToString().ToUpper();
+            if (fs != "F" && fs != "S")
+                throw new SyntaxError(SyntaxError.ErrorType.ERROR_IN_GOTO, CursorCurrent, Source);
+
+            int positionBracket = gotoMatch.Index + gotoMatch.Length - 1;
+
+            // Hide literal quotes with *'s
+            string replaced = Quotes.Replace(Input, m => new string('*', m.Length));
+            char bracket = gotoMatch.Value[^1];
+            Match bracketMatch = bracket == '('
+                ? BalancedParen.Match(replaced, positionBracket)
+                : BalancedAngle.Match(replaced, positionBracket);
+
+            SecondGotoPosition = bracketMatch.Index + bracketMatch.Length;
+            CursorCurrent += 2;
+
+            if (bracket == '(')
+                return new Token(fs == "F" ? Token.Type.L_PAREN : Token.Type.L_PAREN_SUCCESS,
+                    Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+
+            return new Token(fs == "F" ? Token.Type.L_ANGLE : Token.Type.L_ANGLE_SUCCESS,
+                Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+
+        }
+
+        internal Token MatchSecondGoto()
+        {
+            string fs = Input[CursorCurrent].ToString().ToUpper();
+
+            if (fs != "F" && fs != "S")
+                throw new SyntaxError(SyntaxError.ErrorType.ERROR_IN_GOTO, CursorCurrent, Source);
+
+            if (++CursorCurrent >= Input.Length)
+                throw new SyntaxError(SyntaxError.ErrorType.ERROR_IN_GOTO, CursorCurrent, Source);
+
+            char bracket = Input[CursorCurrent++];
+
+            if (bracket == '(')
+                return new Token(fs == "F" ? Token.Type.L_PAREN_FAILURE : Token.Type.L_PAREN_SUCCESS,
+                    Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+
+            return new Token(fs == "F" ? Token.Type.L_ANGLE_FAILURE : Token.Type.L_ANGLE_SUCCESS,
+                Input[CursorStart..CursorCurrent], CursorStart, CursorCurrent);
+        }
+
+        #endregion
+
+
+        public int[,] Delta = new int[,]
+        {
+            {
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+            },
+            {
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+
+            },
+            {
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+                0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,   0   ,
+
+            },
+        };
+
+
+        #region File Interface
+
+        public void LexLine(SourceLine source)
+        {
+            SecondGotoPosition = -1;
+            Source = source;
+            CursorStart = CursorCurrent = 0;
+            Input = Source.Text;
+
+            if (IsNotWhiteSpace[Input[CursorCurrent]])
+            {
+                Token label = MatchLabel();
+                source.LineLabel = label.MatchedString;
+            }
+            
+            MatchWhiteSpace();
+
+            while (CursorCurrent < Input.Length)
+            {
+                CursorStart = CursorCurrent;
+                Token t = MatchStatement();
+
+                if (t.TokenType == Token.Type.ERROR)
+                    throw new SyntaxError(SyntaxError.ErrorType.ERRONEOUS_OR_MISSING_BREAK_CHARACTER, CursorCurrent,
+                        Source);
+
+                if (t != Token.TokenNull)
+                    Source.LexLine.Add(t);
+
+                CursorStart = CursorCurrent;
+
+                if (CursorCurrent >= Input.Length)
+                    break;
+
+                t = MatchWhiteSpace();
+
+                if (t.TokenType == Token.Type.SPACE)
+                    Source.LexLine.Add(t);
+            }
+        }
+
+        #endregion
+
+        #region Post Lexing Functions
+
+        internal bool AreParensAndBracketBalanced()
+        {
+            int balancedParen = 0;
+            int balancedAngleBracket = 0;
+            int balancedSquareBracket = 0;
+
+            foreach (Token t in Source.LexLine)
+            {
+                switch (t.TokenType)
+                {
+                    case Token.Type.L_ANGLE:
+                    case Token.Type.L_ANGLE_SUCCESS:
+                        balancedAngleBracket++;
+                        break;
+                    case Token.Type.L_PAREN:
+                    case Token.Type.L_PAREN_WS:
+                    case Token.Type.L_PAREN_SUCCESS:
+                    case Token.Type.L_PAREN_FAILURE:
+                        balancedParen++;
+                        break;
+                    case Token.Type.L_SQUARE:
+                        balancedSquareBracket++;
+                        break;
+                    case Token.Type.R_ANGLE:
+                        balancedAngleBracket--;
+                        break;
+                    case Token.Type.R_PAREN:
+                        balancedParen--;
+                        break;
+                    case Token.Type.R_SQUARE:
+                        balancedSquareBracket--;
+                        break;
+                }
+
+                if (balancedAngleBracket < 0 || balancedParen < 0 || balancedSquareBracket < 0)
+                    return false;
+            }
+
+            return balancedAngleBracket == 0 && balancedParen == 0 && balancedSquareBracket == 0;
+        }
+
+        internal static bool CanConvertSpaceToOperator(Token.Type ttBefore, Token.Type ttAfter)
+        {
+            switch (ttBefore)
+            {
+                case Token.Type.IDENTIFIER:
+                case Token.Type.INTEGER:
+                case Token.Type.REAL:
+                case Token.Type.R_ANGLE:
+                case Token.Type.R_PAREN:
+                case Token.Type.R_SQUARE:
+                case Token.Type.STRING:
+                    switch (ttAfter)
+                    {
+                        case Token.Type.IDENTIFIER:
+                        case Token.Type.INTEGER:
+                        case Token.Type.L_PAREN:
+                        case Token.Type.REAL:
+                        case Token.Type.STRING:
+                        case Token.Type.UNARY:
+                            return true;
+                        default:
+                            return false;
+                    }
+                default:
+                    return false;
+            }
+        }
+
+        internal void CheckForNullArguments()
+        {
+            for (int i = 0; i < Source.LexLine.Count - 1; ++i)
+            {
+                Token.Type t0 = Source.LexLine[i].TokenType;
+                Token.Type t1 = Source.LexLine[i + 1].TokenType;
+
+                switch (t0)
+                {
+                    case Token.Type.L_PAREN:
+                        switch (t1)
+                        {
+                            case Token.Type.R_PAREN:
+                                Source.LexLine.Insert(i + 1, Token.TokenNull);
+                                continue;
+                            case Token.Type.COMMA:
+                                Source.LexLine.Insert(i + 1, Token.TokenNull);
+                                continue;
+                        }
+                        break;
+                    case Token.Type.COMMA:
+                        switch (t1)
+                        {
+                            case Token.Type.COMMA:
+                                Source.LexLine.Insert(i + 1, Token.TokenNull);
+                                continue;
+                            case Token.Type.R_PAREN:
+                                Source.LexLine.Insert(i + 1, Token.TokenNull);
+                                continue;
+                        }
+                        break;
+                }
+            }
+        }
+
+        internal int FindImplicitMatchOperator()
+        {
+            int cursor = 0;
+
+            while (cursor < Source.LexLine.Count && Source.LexLine[cursor].TokenType == Token.Type.UNARY)
+            {
+                ++cursor;
+            }
+
+            if (cursor >= Source.LexLine.Count)
+                return -1;
+
+            if (IsAtomicElement(cursor))
+            {
+                if (++cursor >= Source.LexLine.Count)
+                    return -1;
+
+                if (Source.LexLine[cursor].TokenType == Token.Type.BINARY_CONCAT)
+                    return cursor;
+
+                if (!IsLeftParenOrBracket(cursor))
+                    return -1;
+
+                cursor = SkipBalancedParensOrBrackets(cursor);
+
+                if (cursor < 0)
+                    return -1;
+
+                if (++cursor < Source.LexLine.Count && Source.LexLine[cursor].TokenType == Token.Type.BINARY_CONCAT)
+                    return cursor;
+
+                return -1;
+            }
+
+            if (Source.LexLine[cursor].TokenType != Token.Type.L_PAREN)
+                return -1;
+
+            cursor = SkipBalancedParensOrBrackets(cursor);
+
+            if (cursor < 0)
+                return cursor;
+
+            if (++cursor < Source.LexLine.Count && Source.LexLine[cursor].TokenType == Token.Type.BINARY_CONCAT)
+                return cursor;
+
+            return -1;
+        }
+
+        internal void FindMatchAndReplaceOperators()
+        {
+            List<int> matches = FindMatchOperators();
+
+            foreach (int match in matches)
+            {
+                int replace = match > 0 ? FindReplaceOperator(match) : -1;
+
+                if (match < 0)
+                    continue;
+
+                if (replace < 0)
+                {
+                    Source.LexLine[match].TokenType = Token.Type.MATCH_ONLY;
+                    continue;
+                }
+
+                Source.LexLine[match].TokenType = Source.LexLine[replace].TokenType == Token.Type.UNARY_EQUAL
+                    ? Token.Type.MATCH_DELETE
+                                : Token.Type.MATCH_REPLACE;
+                Source.LexLine[replace].TokenType = Source.LexLine[replace].TokenType == Token.Type.UNARY_EQUAL
+                    ? Token.Type.OBJECT_DELETE
+                                : Token.Type.OBJECT_REPLACE;
+            }
+        }
+
+        internal List<int> FindMatchOperators()
+        {
+            List<int> result = new();
+
+            // Find implicit pattern match operator (space)
+            int initial = FindImplicitMatchOperator();
+            if (initial >= 0) // Found it
+                result.Add(initial);
+
+            // Find explicit pattern match operator (BINARY_QUESTION)
+            for (int i = 0; i < Source.LexLine.Count; ++i)
+            {
+                if (Source.LexLine[i].TokenType == Token.Type.BINARY_QUESTION)
+                    result.Add(i);
+            }
+
+            return result;
+        }
+
+        internal int FindReplaceOperator(int cursor)
+        {
+            while (++cursor < Source.LexLine.Count)
+            {
+                if (IsLeftParenOrBracket(cursor))
+                {
+                    cursor = SkipBalancedParensOrBrackets(cursor);
+
+                    if (cursor < 0)
+                        return -1;
+
+                    continue;
+                }
+
+                if (Source.LexLine[cursor].TokenType is Token.Type.UNARY_EQUAL or Token.Type.BINARY_EQUAL)
+                    return cursor;
+            }
+
+            return -1;
+        }
+
+        internal bool IsAtomicElement(int cursor)
+        {
+            switch (Source.LexLine[cursor].TokenType)
+            {
+                case Token.Type.IDENTIFIER:
+                case Token.Type.STRING:
+                case Token.Type.INTEGER:
+                case Token.Type.REAL:
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal bool IsLeftParenOrBracket(int cursor)
+        {
+            switch (Source.LexLine[cursor].TokenType)
+            {
+                case Token.Type.L_PAREN:
+                case Token.Type.L_SQUARE:
+                case Token.Type.L_ANGLE:
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal void PostLexLine()
+        {
+            RemoveSpaces();
+
+            if (!AreParensAndBracketBalanced())
+                throw new SyntaxError(SyntaxError.ErrorType.ERRONEOUS_OR_MISSING_BREAK_CHARACTER, CursorCurrent, Source);
+
+            CheckForNullArguments();
+
+            FindMatchAndReplaceOperators();
+        }
+
+        internal void RemoveSpaces()
+        {
+            if (Source.LexLine.Count == 0)
+                return;
+            //if (tokens[0].TokenType == Token.Type.SPACE)
+            //    tokens[0].TokenType = Token.Type.NO_LABEL;
+            if (Source.LexLine[^1].TokenType == Token.Type.SPACE)
+                Source.LexLine.RemoveAt(Source.LexLine.Count - 1);
+
+            for (int i = 0; i < Source.LexLine.Count - 1; ++i)
+            {
+                if (Source.LexLine[i].TokenType != Token.Type.SPACE)
+                    continue;
+                if (CanConvertSpaceToOperator(Source.LexLine[i - 1].TokenType, Source.LexLine[i + 1].TokenType))
+                {
+                    Source.LexLine[i].TokenType = Token.Type.BINARY_CONCAT;
+                    Source.LexLine[i].MatchedString = "";
+                }
+                else
+                    Source.LexLine.RemoveAt(i);
+            }
+        }
+
+        internal int SkipBalancedParensOrBrackets(int startingPoint)
+        {
+            int balanceCount = 1;
+            Token t = Source.LexLine[startingPoint];
+
+            Token.Type searchTokenType = t.TokenType switch
+            {
+                Token.Type.L_PAREN => Token.Type.R_PAREN,
+                Token.Type.L_ANGLE => Token.Type.R_ANGLE,
+                Token.Type.L_SQUARE => Token.Type.R_SQUARE,
+                _ => Token.Type.NULL
+            };
+
+            for (++startingPoint; startingPoint < Source.LexLine.Count; ++startingPoint)
+            {
+                if (Source.LexLine[startingPoint].TokenType == searchTokenType)
+                    --balanceCount;
+                if (Source.LexLine[startingPoint].TokenType == t.TokenType)
+                    ++balanceCount;
+                if (balanceCount == 0)
+                    break;
+            }
+
+            if (startingPoint == Source.LexLine.Count)
+                return -1;
+
+            return startingPoint;
+        }
+
+        #endregion
+    }
+}

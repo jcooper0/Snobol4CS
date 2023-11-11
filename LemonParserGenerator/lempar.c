@@ -948,7 +948,7 @@ void Parse(
 #endif
 #ifndef NDEBUG
       if( yyTraceFILE ){
-        fprintf(yyTraceFILE,"%sSyntax Error!\n",yyTracePrompt);
+        fprintf(yyTraceFILE,"%ssyntax Error!\n",yyTracePrompt);
       }
 #endif
 #ifdef YYERRORSYMBOL

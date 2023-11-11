@@ -1,0 +1,6 @@
+﻿		"Now is the time" ? BREAK("ei") . X
+		nextwrd line ? wrdpat =  :f(read)
+		A = (X ? Y) (Q ? P)
+		'B2' ? ('A' | 'B') . OUTPUT ('1' | '2' | '3') . OUTPUT
+		'VALLEY' ? 'A' @OUTPUT ARB 'E' @OUTPUT
+

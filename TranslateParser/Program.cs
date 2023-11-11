@@ -10,7 +10,7 @@ namespace TranslateParserCS
         private static readonly List<string> ParseTables = new();
         private static CReader CSourceFile;
 
-        static void Main(string[] args)
+        internal static void Main(string[] args)
         {
             if (args.Length == 0)
             {
@@ -47,7 +47,7 @@ namespace TranslateParserCS
 
                 if (line.StartsWith("/************ Begin %syntax_error code"))
                 {
-                    syntaxErrorCode = ScanSyntaxErrorCode();
+                    syntaxErrorCode = ScansyntaxErrorCode();
                 }
 
                 if (line.StartsWith("/*********** Begin %parse_accept code"))
@@ -164,7 +164,7 @@ namespace TranslateParserCS
                     case "YYWILDCARD":
                         {
                             definition = definition.Replace("(", "").Replace(")", "");
-                            if ((definition == "true") || (definition == "false"))
+                            if (definition is "true" or "false")
                                 Defines[keyword] = "\t\tpublic bool " + keyword + " = " + definition + ";";
                             else
                                 Defines[keyword] = "\t\tpublic int " + keyword + " = " + definition + ";";
@@ -196,7 +196,7 @@ namespace TranslateParserCS
                     default:
                         {
                             definition = definition.Replace("(", "").Replace(")", "");
-                            if ((definition == "true") || (definition == "false"))
+                            if (definition is "true" or "false")
                                 Defines[keyword] = "\t\tprivate readonly bool " + keyword + " = " + definition + ";";
                             else
                                 Defines[keyword] = "\t\tprivate readonly int " + keyword + " = " + definition + ";";
@@ -284,7 +284,11 @@ namespace TranslateParserCS
                 }
                 if (line.StartsWith("default"))
                 {
-                    output += "\r\n\t\t\t\t" + line.Trim();
+                    line = CSourceFile.ReadLine();
+                    while (!line.Contains("break;"))
+                    {
+                        line = CSourceFile.ReadLine();
+                    }
                     continue;
                 }
                 output += "\r\n\t\t\t\t\t" + line.Trim();
@@ -296,10 +300,10 @@ namespace TranslateParserCS
             return output;
         }
 
-        internal static string ScanSyntaxErrorCode()
+        internal static string ScansyntaxErrorCode()
         {
             string line;
-            string output = "\r\n\t\tinternal void SyntaxError(int yymajor, YYMINORTYPE yyminor)\r\n\t\t{";
+            string output = "\r\n\t\tinternal void syntaxError(int yymajor, YYMINORTYPE yyminor)\r\n\t\t{";
             while (((line = CSourceFile.ReadLine().Trim()) != null) &&
                    line.IndexOf("/************ End %syntax_error code") != 0)
             {

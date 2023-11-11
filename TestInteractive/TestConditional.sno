@@ -1,0 +1,6 @@
+﻿PopBegTag   OUTPUT          =   GT(xTrace, 4) (DIFFER($'@B') value($'@B'), 'FAIL') ' = PopBegTag()'
+            list            =   list (DIFFER(list) ', ', '') v
+PopEndTag   OUTPUT          =   GT(xTrace, 4) (DIFFER($'@E') value($'@E'), 'FAIL') ' = PopEndTag()'
+            list            =   list (DIFFER(list) ', ', '') v
+               Tree           =    tree(t, v,                                      (GT(nc, 0) nc, NULL)                                  ,   (GT(nc, 0) ARRAY('1:' nc), NULL)                                  )
+               TValue         =  TValue (DIFFER(TValue) '.', '') v(c(x)[i])         :(TValue5)

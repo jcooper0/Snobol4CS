@@ -4,40 +4,45 @@ namespace TestInteractive
 {
     internal class Program
     {
-        public Compiler Compile { get; set; }
-
-        static void Main(string[] args)
+        static void Main()
         {
-            string path = @"..\..\..\test.sno";
-            
-            Compiler Compile = new Compiler();
-            
-            Compile.Compile(path);
+            bool debugTrace = false;
 
-            foreach (SourceLine sourceLine in Compile.Source.SourceLines)
+            string path = @"..\..\..\test.sbl";
+            //string path = @"..\..\..\TestArgumentList.sno";
+            //string path = @"..\..\..\TestNullArguments.sno";
+            //string path = @"..\..\..\TestConditional.sno";
+            //string path = @"..\..\..\TestArrayTable.sno";
+            //string path = @"C:\Users\jcooper\Documents\Desktop\Beautiful\Beautiful.sno";
+            //string path = @"..\..\..\errors.sno";
+            //string path = @"..\..\..\TestMatch.sno";
+            Compiler compiler = new();
+
+            compiler.Compile(path, false);
+
+            foreach (SourceLine sourceLine in compiler.Source.SourceLines)
             {
-                Console.WriteLine("----------------------------------------------------------------------");
-                Console.WriteLine(sourceLine.Path + " (" + sourceLine.SourceLineNumber + ")");
-                Console.WriteLine(sourceLine.SourceLineText);
-                Console.WriteLine("----------------------------------------------------------------------");
-                if (sourceLine.Error)
+                if (debugTrace)
                 {
-                    Console.Write(sourceLine.ErrorDescription);
-                    continue;
-                }
-                foreach (Token t in sourceLine.LexResult)
-                {
-                    Console.WriteLine(t.ToString());
-                }
-                Console.WriteLine("");
+                    Console.WriteLine("----------------------------------------------------------------------");
+                    Console.WriteLine(sourceLine.Path + " (" + sourceLine.LineNumber + ")");
+                    Console.WriteLine(sourceLine.Text);
+                    Console.WriteLine("----------------------------------------------------------------------");
+                    Console.WriteLine("Label: " + sourceLine.LineLabel);
+                    Console.WriteLine("Tokens:");
+                    foreach (Token t in sourceLine.LexLine)
+                    {
+                        Console.WriteLine(t.ToString());
+                    }
+                    Console.WriteLine("");
+                    foreach (Command command in sourceLine.Commands)
+                    {
+                        Console.WriteLine(command.ToString());
+                    }
 
-                foreach (Command command in sourceLine.Commands)
-                {
-                    Console.WriteLine(command.ToString());
+                    Console.WriteLine("");
+                    Console.ReadKey();
                 }
-                Console.WriteLine("");
-
-                Console.ReadKey();
             }
         }
     }

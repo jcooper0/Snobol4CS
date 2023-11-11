@@ -1,23 +1,27 @@
-﻿using System.Data;
-
-namespace Snobol4
+﻿namespace Snobol4
 {
     public class SyntaxError : ApplicationException
     {
 
-        public string Description { get; set; } = "";
-
-        public SyntaxError(ErrorType errorType, int column, SourceLine source) : base()
+        public string Description
         {
-            Description = "Error: " + ErrorMessage[(int)errorType] + "\n" + " File: " + 
-                source.Path + " (" + source.SourceLineNumber + ")\n" + 
-                source.SourceLineText.Replace('\t',' ') + 
+            get; set;
+        }
+
+        public SyntaxError(ErrorType errorType, int column, SourceLine? source)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            Description = "Error: " + ErrorMessage[(int)errorType] + "\n" + " File: " +
+                source.Path + " (" + source.Number + ")\n" +
+                source.Text.Replace('\t', ' ') +
                 "\n" + new string(' ', column) + "^\n";
         }
 
-        public SyntaxError() : base()
-        {
-        }
+       public SyntaxError()
+       {
+           Description = "";
+       }
 
         public enum ErrorType
         {
@@ -93,12 +97,12 @@ namespace Snobol4
             (int)ErrorType.BINARY_OPERATOR_MISSING_OR_IN_ERROR + ". Binary Operator Missing Or In Error",
             (int)ErrorType.ERRONEOUS_INTEGER + ". Erroneous Integer",
             (int)ErrorType.ERRONEOUS_LABEL + ". Erroneous Label",
-            (int)ErrorType.ERRONEOUS_OR_MISSING_BREAK_CHARACTER + ". Erroneous Or Missing Break Character",
+            (int)ErrorType.ERRONEOUS_OR_MISSING_BREAK_CHARACTER + ". Erroneous Or Missing Break Character, Parenthesis, Or Bracket",
             (int)ErrorType.ERRONEOUS_REAL_NUMBER + ". Erroneous Real Number",
             (int)ErrorType.ERRONEOUS_SUBJECT + ". Erroneous Subject",
             (int)ErrorType.ERROR_IN_GOTO + ". Error In Goto",
             (int)ErrorType.ILLEGAL_CHARACTER_IN_ELEMENT + ". Illegal Character In Element",
-            (int)ErrorType.IMPROPERLY_TERMINATED_STATEMENT + ". Improperly_Terminated StatemenT",
+            (int)ErrorType.IMPROPERLY_TERMINATED_STATEMENT + ". Improperly_Terminated Statement",
             (int)ErrorType.PREVIOUSLY_DEFINED_LABEL + ". Previously Defined Label",
             (int)ErrorType.UNCLOSED_LITERAL + ". Unclosed Literal",
             (int)ErrorType.UNEXPECTED_CHARACTER + ". Unexpected Character"

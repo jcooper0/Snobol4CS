@@ -3476,7 +3476,7 @@ void ReportOutput(struct lemon* lemp)
         fprintf(fp, "\n");
     }
     fprintf(fp, "----------------------------------------------------\n");
-    fprintf(fp, "Syntax-only Symbols:\n");
+    fprintf(fp, "syntax-only Symbols:\n");
     fprintf(fp, "The following symbols never carry semantic content.\n\n");
     for (i = n = 0; i < lemp->nsymbol; i++) {
         int w;
