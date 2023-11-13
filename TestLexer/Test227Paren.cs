@@ -2,13 +2,13 @@ using Snobol4;
 namespace TestLexer
 {
     [TestClass]
-    public class Test225Bracket
+    public class Test227Paren
     {
         [TestMethod]
-        public void TEST_225_001()
+        public void TEST_227_001()
         {
             SyntaxError e = new(0);
-            string s = "   A>";
+            string s = "    :S(end";
             Lexer lex = new();
             SourceLine source = new("TestFile", 1, s);
             try
@@ -19,35 +19,15 @@ namespace TestLexer
             {
                 e = ex;
             }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(4, e.Column);
-        }
-
-
-        [TestMethod]
-        public void TEST_225_002()
-        {
-            SyntaxError e = new(0);
-            string s = "   A]";
-            Lexer lex = new();
-            SourceLine source = new("TestFile", 1, s);
-            try
-            {
-                lex.Lex(source);
-            }
-            catch (SyntaxError ex)
-            {
-                e = ex;
-            }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(4, e.Column);
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(9, e.Column);
         }
 
         [TestMethod]
-        public void TEST_225_003()
+        public void TEST_227_002()
         {
             SyntaxError e = new(0);
-            string s = " B A>";
+            string s = "    :S(end)F(end";
             Lexer lex = new();
             SourceLine source = new("TestFile", 1, s);
             try
@@ -58,15 +38,15 @@ namespace TestLexer
             {
                 e = ex;
             }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(4, e.Column);
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(15, e.Column);
         }
 
         [TestMethod]
-        public void TEST_225_004()
+        public void TEST_227_003()
         {
             SyntaxError e = new(0);
-            string s = " B A]";
+            string s = "    :S(end)F(()";
             Lexer lex = new();
             SourceLine source = new("TestFile", 1, s);
             try
@@ -77,15 +57,15 @@ namespace TestLexer
             {
                 e = ex;
             }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(4, e.Column);
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(14, e.Column);
         }
 
         [TestMethod]
-        public void TEST_225_005()
+        public void TEST_227_004()
         {
             SyntaxError e = new(0);
-            string s = " (A + B])";
+            string s = "    :S(end";
             Lexer lex = new();
             SourceLine source = new("TestFile", 1, s);
             try
@@ -96,35 +76,15 @@ namespace TestLexer
             {
                 e = ex;
             }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(7, e.Column);
-        }
-
-
-        [TestMethod]
-        public void TEST_225_006()
-        {
-            SyntaxError e = new(0);
-            string s = "   A[B + C(]";
-            Lexer lex = new();
-            SourceLine source = new("TestFile", 1, s);
-            try
-            {
-                lex.Lex(source);
-            }
-            catch (SyntaxError ex)
-            {
-                e = ex;
-            }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(11, e.Column);
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(9, e.Column);
         }
 
         [TestMethod]
-        public void TEST_225_007()
+        public void TEST_227_005()
         {
             SyntaxError e = new(0);
-            string s = "    :S(end(>F<END>";
+            string s = "    :S<end>F(end";
             Lexer lex = new();
             SourceLine source = new("TestFile", 1, s);
             try
@@ -135,9 +95,27 @@ namespace TestLexer
             {
                 e = ex;
             }
-            Assert.AreEqual(225, e.Code);
-            Assert.AreEqual(11, e.Column);
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(15, e.Column);
         }
 
+        [TestMethod]
+        public void TEST_227_006()
+        {
+            SyntaxError e = new(0);
+            string s = "    :S<end>F(()";
+            Lexer lex = new();
+            SourceLine source = new("TestFile", 1, s);
+            try
+            {
+                lex.Lex(source);
+            }
+            catch (SyntaxError ex)
+            {
+                e = ex;
+            }
+            Assert.AreEqual(227, e.Code);
+            Assert.AreEqual(14, e.Column);
+        }
     }
 }

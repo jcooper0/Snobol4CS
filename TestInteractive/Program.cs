@@ -6,7 +6,7 @@ namespace TestInteractive
     {
         static void Main()
         {
-            bool debugTrace = false;
+            bool debugTrace = true;
 
             string path = @"..\..\..\test.sbl";
             //string path = @"..\..\..\TestArgumentList.sno";

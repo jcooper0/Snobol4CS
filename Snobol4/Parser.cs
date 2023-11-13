@@ -34,7 +34,7 @@ public partial class Parser
         {
             if (yyact < YY_MIN_REDUCE)
             {
-                Console.WriteLine("Input " + yymajor + " (" + yyTokenName[yymajor] + ") in state " + yyact);
+                Console.WriteLine("Input " + yymajor + " (" + yyTokenName[yymajor] + ") in State " + yyact);
             }
             else
             {
@@ -166,7 +166,7 @@ public partial class Parser
     {
         if (!NDEBUG)
         {
-            Console.WriteLine("Shift: New state:" + yyNewState + "  Token ID: " + yyMajor + "  Value: " + yyMinor);
+            Console.WriteLine("Shift: New State:" + yyNewState + "  Token ID: " + yyMajor + "  Value: " + yyMinor);
         }
         if (yyNewState > YY_MAX_SHIFT)
         {
@@ -174,7 +174,7 @@ public partial class Parser
         }
         if (!NDEBUG)
         {
-            Console.WriteLine("Pushing: New state:" + yyNewState + "  Token ID: " + yyMajor + " Value: " + yyMinor);
+            Console.WriteLine("Pushing: New State:" + yyNewState + "  Token ID: " + yyMajor + " Value: " + yyMinor);
             Console.WriteLine("ParserStack:\r\n" + ParserStack);
         }
         ParserStack.Push(yyNewState, yyMajor, yyMinor);
@@ -186,7 +186,7 @@ public partial class Parser
         {
             Console.WriteLine("Reduce: Rule No:" + yyruleno + "  Lookahead Token ID: " + yyLookahead + "  Value: " + yyminor);
         }
-        int yygoto;                     /* The next state */
+        int yygoto;                     /* The next State */
         int yyact;                      /* The next action */
         int yysize;                     /* Amount to pop the stack */
 
@@ -257,9 +257,9 @@ internal class ShiftReduceStack : Stack<ParserStackEntry>
 {
     internal ParserStackEntry yytos => Peek();
 
-    internal void Push(int state, int sym, YYMINORTYPE v)
+    internal void Push(int State, int sym, YYMINORTYPE v)
     {
-        Push(new ParserStackEntry(state, sym, v));
+        Push(new ParserStackEntry(State, sym, v));
     }
 
     public ParserStackEntry this[int key]
@@ -284,9 +284,9 @@ internal class ParserStackEntry
         get; set;
     }
 
-    internal ParserStackEntry(int state, int sym, YYMINORTYPE y)
+    internal ParserStackEntry(int State, int sym, YYMINORTYPE y)
     {
-        stateno = state;
+        stateno = State;
         major = sym;
         minor = y;
     }

@@ -19,6 +19,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -38,6 +39,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(6, se.Column);
         }
@@ -57,6 +59,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(6, se.Column);
         }
@@ -76,6 +79,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -95,6 +99,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -114,6 +119,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -133,6 +139,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -152,6 +159,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -171,6 +179,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -190,6 +199,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -209,6 +219,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(6, se.Column);
         }
@@ -228,6 +239,7 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
@@ -247,9 +259,31 @@ namespace TestLexer
             {
                 se = e;
             }
+
             Assert.AreEqual(220, se.Code);
             Assert.AreEqual(5, se.Column);
         }
+
+        [TestMethod]
+        public void TEST_220_014()
+        {
+            SyntaxError e = new(0);
+            string s = "    :S(end()F(END)";
+            Lexer lex = new();
+            SourceLine source = new("TestFile", 1, s);
+            try
+            {
+                lex.Lex(source);
+            }
+            catch (SyntaxError ex)
+            {
+                e = ex;
+            }
+
+            Assert.AreEqual(220, e.Code);
+            Assert.AreEqual(13, e.Column);
+        }
+
     }
 }
 
