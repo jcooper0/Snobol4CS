@@ -13,7 +13,7 @@ namespace TestInteractive
             //string path = @"..\..\..\TestNullArguments.sno";
             //string path = @"..\..\..\TestConditional.sno";
             //string path = @"..\..\..\TestArrayTable.sno";
-            //string path = @"C:\Users\jcooper\Documents\Desktop\Beautiful\Beautiful.sno";
+            //tring path = @"C:\Users\jcooper\Documents\Desktop\Beautiful\Beautiful.sno";
             //string path = @"..\..\..\errors.sno";
             //string path = @"..\..\..\TestMatch.sno";
             Compiler compiler = new();

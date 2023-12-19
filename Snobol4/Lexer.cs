@@ -257,31 +257,8 @@ public partial class Lexer
         return subString == "" || UnaryDeletePattern.IsMatch(subString);
     }
 
-    public static Regex RightConcatenateOperandPattern =
-        new("\\A[!~?$.*^%*/#+@|&=\\-]*[A-Za-z0-9('\\\"]", RegexOptions.Compiled);
-
-    public bool IsConcatenateOperator()
-    {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        if (Source.LexLine.Count < 2)
-            return false;
-        switch (Source.LexLine[^1].TokenType)
-        {
-            case Token.Type.R_PAREN:
-            case Token.Type.R_ANGLE:
-            case Token.Type.R_SQUARE:
-            case Token.Type.IDENTIFIER:
-            case Token.Type.INTEGER:
-            case Token.Type.REAL:
-            case Token.Type.STRING:
-                break;
-            default:
-                return false;
-        }
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        string subString = Source.Text[CursorCurrent..];
-        return RightConcatenateOperandPattern.IsMatch(subString);
-    }
+    //public static Regex RightConcatenateOperandPattern =
+    //    new("\\A[!~?$.*^%*/#+@|&=\\-]*[A-Za-z0-9('\"]", RegexOptions.Compiled);
 
     public void CheckForUnconditionalGoToParen()
     {
@@ -309,14 +286,14 @@ public partial class Lexer
         }
     }
 
-    public bool IsSpaceAMatchOperator()
+    public Token.Type MatchOrConcat()
     {
         if (PatternMatchFound)
-            return false;
+            return Token.Type.BINARY_CONCAT;
         if (BracketStack.Count > 0)
-            return false;
+            return Token.Type.BINARY_CONCAT;
         PatternMatchFound = true;
-        return true;
+        return Token.Type.BINARY_QUESTION;
     }
 
     public void CheckForBalancedBrackets()
@@ -327,13 +304,6 @@ public partial class Lexer
             throw new SyntaxError(ColonFound ? 227 : 226, CursorCurrent - 1, Source);
         throw new SyntaxError(ColonFound ? 228 : 229, CursorCurrent - 1, Source);
     }
-
-    //public void CheckForColonFound()
-    //{
-    //    if (ColonFound && BracketStack.Count == 0)
-    //        return;
-    //    throw new SyntaxError(220, CursorCurrent, Source);
-    //}
 
     public void AddGotoParen()
     {
@@ -388,18 +358,18 @@ public partial class Lexer
             case 1: // START
                 break;
             case 2: // SPACE
-                if (IsConcatenateOperator())
-                {
-                    if (IsSpaceAMatchOperator())
-                    {
-                        Source.LexLine.Add(new(Token.Type.BINARY_QUESTION, Source.Text[CursorStart..CursorCurrent],
-                             CursorStart, CursorCurrent));
-                        break;
-                    }
-                    Source.LexLine.Add(new(Token.Type.BINARY_CONCAT, Source.Text[CursorStart..CursorCurrent],
-                        CursorStart, CursorCurrent));
-                    break;
-                }
+                //if (IsConcatenateOperator())
+                //{
+                //    if (IsSpaceAMatchOperator())
+                //    {
+                //        Source.LexLine.Add(new(Token.Type.BINARY_QUESTION, Source.Text[CursorStart..CursorCurrent],
+                //             CursorStart, CursorCurrent));
+                //        break;
+                //    }
+                //    Source.LexLine.Add(new(Token.Type.BINARY_CONCAT, Source.Text[CursorStart..CursorCurrent],
+                //        CursorStart, CursorCurrent));
+                //    break;
+                //}
                 Source.LexLine.Add(new(Token.Type.SPACE, Source.Text[CursorStart..CursorCurrent],
                     CursorStart, CursorCurrent));
                 break;
@@ -422,6 +392,28 @@ public partial class Lexer
                 Source.LexLine.Add(new(Token.Type.COLON, Source.Text[CursorStart..CursorCurrent],
                     CursorStart, CursorCurrent));
                 ColonFound = true;
+                break;
+            case 6: // BINARY_CONCAT
+                switch (NextState)
+                {
+                    case 5:
+                    case 11:
+                    case 12:
+                    case 13:
+                    case 17:
+                    case 18:
+                        Source.LexLine.Add(new(Token.Type.SPACE, Source.Text[CursorStart..CursorCurrent],
+                            CursorStart, CursorCurrent));
+                        break;
+                    case 3:
+                    case 7:
+                    case 8:
+                    case 9:
+                    case 10:
+                        Source.LexLine.Add(new(MatchOrConcat(), Source.Text[CursorStart..CursorCurrent],
+                            CursorStart, CursorCurrent));
+                        break;
+                }
                 break;
             case 7: // STRING
             case 8:
