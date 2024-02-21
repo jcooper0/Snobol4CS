@@ -2,7 +2,7 @@
 
 public class Compiler
 {
-    internal Lexer Lex
+    internal Lexer2 Lex
     {
         get; set;
     }
@@ -21,7 +21,7 @@ public class Compiler
 
     public Compiler()
     {
-        Lex = new Lexer();
+        Lex = new Lexer2();
         Parse = new Parser();
         Source = new SourceFile();
     }

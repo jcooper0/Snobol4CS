@@ -89,6 +89,7 @@ public class Token
         UNARY_SLASH = 54,
         UNARY_STAR = 55,
         UNARY_TILDE = 56,
+        OPERATOR = 100,
     }
 
     #endregion

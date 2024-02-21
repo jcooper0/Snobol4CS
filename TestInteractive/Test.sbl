@@ -1,2 +1,1 @@
-﻿               &ALPHABET      POS(9)  LEN(1) . ht     ;*// horizontal tab
-END
+﻿                  snoFunctions   =  'ANY A' 'CHAR' 'CLEAR' 'TEST'

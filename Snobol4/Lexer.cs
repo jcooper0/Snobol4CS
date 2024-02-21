@@ -87,6 +87,11 @@ public partial class Lexer
         get; set;
     }
 
+    internal bool EqualFound
+    {
+        get; set;
+    }
+
     internal int NextState
     {
         get; set;
@@ -186,83 +191,21 @@ public partial class Lexer
         return entryLabel;
     }
 
-    public bool IsBinaryOperator()
-    {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        switch (CursorCurrent - CursorStart)
-        {
-            case 1:
-                break;
-            case 2:
-                if (Source.Text[CursorStart..CursorCurrent] != "**")
-                    return false;
-                break;
-            default:
-                return false;
-        }
-        if (Source.LexLine[^1].TokenType != Token.Type.SPACE)
-            return false;
-        return NextState == 2;
-    }
-
-    public static Regex RightBinaryOperandPattern =
-        new("\\A[\\t ]+[!~?$.*^%*/#+@|&=\\-]*[\\t ]*[A-Za-z0-9('\\\"]", RegexOptions.Compiled);
-
-    public void CheckForBinaryOperands()
-    {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        if (Source.LexLine.Count < 2)
-            throw new SyntaxError(221, CursorStart, Source);
-        switch (Source.LexLine[^2].TokenType)
-        {
-            case Token.Type.R_PAREN:
-            case Token.Type.R_ANGLE:
-            case Token.Type.R_SQUARE:
-            case Token.Type.IDENTIFIER:
-            case Token.Type.INTEGER:
-            case Token.Type.REAL:
-            case Token.Type.STRING:
-                break;
-            default:
-                throw new SyntaxError(221, CursorStart, Source);
-        }
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        string subString = Source.Text[CursorCurrent..];
-        if (!RightBinaryOperandPattern.IsMatch(subString))
-            throw new SyntaxError(221, CursorStart, Source);
-    }
-
-    public static Regex RightUnaryOperandPattern =
-        new("\\A[!~?$.*^%*/#+@|&=\\-]*[\\t ]*[A-Za-z0-9('\\\"]", RegexOptions.Compiled);
-
-    public void CheckForUnaryOperand()
-    {
-        if (NextState == 2)
-            throw new SyntaxError(221, CursorCurrent, Source);
-        Debug.Assert(Source != null, nameof(Source) + " != null");
-        string subString = Source.Text[CursorCurrent..];
-        if (!RightUnaryOperandPattern.IsMatch(subString))
-            throw new SyntaxError(221, CursorStart, Source);
-    }
-
     public static Regex UnaryDeletePattern =
-        new("\\A[\\t ]*[)>:\\]]", RegexOptions.Compiled);
+        new(@"\A[\t ]*[)>:\]]", RegexOptions.Compiled);
 
     public bool IsUnaryDelete()
     {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
+        Debug.Assert(Source != null, nameof(Source) + " == null");
         if (Source.Text[CursorStart..CursorCurrent] != "=")
             return false;
         string subString = Source.Text[CursorCurrent..];
         return subString == "" || UnaryDeletePattern.IsMatch(subString);
     }
 
-    //public static Regex RightConcatenateOperandPattern =
-    //    new("\\A[!~?$.*^%*/#+@|&=\\-]*[A-Za-z0-9('\"]", RegexOptions.Compiled);
-
     public void CheckForUnconditionalGoToParen()
     {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
+        Debug.Assert(Source != null, nameof(Source) + " = null");
         switch (Source.LexLine[^1].TokenType)
         {
             case Token.Type.R_PAREN:
@@ -275,7 +218,7 @@ public partial class Lexer
 
     public void CheckForUnconditionalGoToAngle()
     {
-        Debug.Assert(Source != null, nameof(Source) + " != null");
+        Debug.Assert(Source != null, nameof(Source) + " == null");
         switch (Source.LexLine[^1].TokenType)
         {
             case Token.Type.R_PAREN:
@@ -288,7 +231,7 @@ public partial class Lexer
 
     public Token.Type MatchOrConcat()
     {
-        if (PatternMatchFound)
+        if (PatternMatchFound || EqualFound)
             return Token.Type.BINARY_CONCAT;
         if (BracketStack.Count > 0)
             return Token.Type.BINARY_CONCAT;
@@ -349,6 +292,11 @@ public partial class Lexer
         }
     }
 
+    public static Regex BinaryOperator1 =
+        new(@"\A([ \t]+)[\*\~\?\$\.\!\^\%\/\#\+\-\@\|\&\=][ \t]", RegexOptions.Compiled);
+    public static Regex BinaryOperator2 =
+        new(@"\A([ \t]+)\*\*[ \t]", RegexOptions.Compiled);
+
     public void Accept()
     {
         Debug.Assert(Source != null, nameof(Source) + " != null");
@@ -358,18 +306,6 @@ public partial class Lexer
             case 1: // START
                 break;
             case 2: // SPACE
-                //if (IsConcatenateOperator())
-                //{
-                //    if (IsSpaceAMatchOperator())
-                //    {
-                //        Source.LexLine.Add(new(Token.Type.BINARY_QUESTION, Source.Text[CursorStart..CursorCurrent],
-                //             CursorStart, CursorCurrent));
-                //        break;
-                //    }
-                //    Source.LexLine.Add(new(Token.Type.BINARY_CONCAT, Source.Text[CursorStart..CursorCurrent],
-                //        CursorStart, CursorCurrent));
-                //    break;
-                //}
                 Source.LexLine.Add(new(Token.Type.SPACE, Source.Text[CursorStart..CursorCurrent],
                     CursorStart, CursorCurrent));
                 break;
@@ -411,7 +347,15 @@ public partial class Lexer
                     case 9:
                     case 10:
                         Source.LexLine.Add(new(MatchOrConcat(), Source.Text[CursorStart..CursorCurrent],
-                            CursorStart, CursorCurrent));
+                              CursorStart, CursorCurrent));
+                        break;
+                    case 23:
+                        if (BinaryOperator1.IsMatch(Source.Text[CursorStart..]) || BinaryOperator2.IsMatch(Source.Text[CursorStart..]))
+                            Source.LexLine.Add(new(Token.Type.SPACE, Source.Text[CursorStart..CursorCurrent],
+                                CursorStart, CursorCurrent));
+                        else
+                            Source.LexLine.Add(new(Token.Type.BINARY_CONCAT, Source.Text[CursorStart..CursorCurrent],
+                                CursorStart, CursorCurrent));
                         break;
                 }
                 break;
@@ -459,22 +403,6 @@ public partial class Lexer
                          Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
                     if (BracketStack.Count == 0)
                         PatternMatchFound = true;
-                    break;
-                }
-                if (IsBinaryOperator())
-                {
-                    CheckForBinaryOperands();
-                    Source.LexLine.Add(new(BinaryOperators[Source.Text[CursorStart..CursorCurrent]],
-                         Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
-                    if (Source.Text[CursorStart] == '=' && BracketStack.Count == 0)
-                        PatternMatchFound = true;
-                    break;
-                }
-                CheckForUnaryOperand();
-                foreach (char unaryOperator in Source.Text[CursorStart..CursorCurrent])
-                {
-                    Source.LexLine.Add(new(UnaryOperators[unaryOperator],
-                        Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
                 }
                 break;
             case 13: // COMMA
@@ -534,6 +462,42 @@ public partial class Lexer
                      CursorStart, CursorCurrent));
                 SuccessGoToFound = true;
                 break;
+            case 22: // UNARY_OPERATOR
+                if (NextState != 2)
+                {
+                    foreach (char unaryOperator in Source.Text[CursorStart..CursorCurrent])
+                    {
+                        Source.LexLine.Add(new(UnaryOperators[unaryOperator],
+                            Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
+                    }
+                }
+                break;
+            case 23: //OPERATOR
+                if (NextState != 2)
+                {
+                    foreach (char unaryOperator in Source.Text[CursorStart..CursorCurrent])
+                    {
+                        Source.LexLine.Add(new(UnaryOperators[unaryOperator],
+                            Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
+                    }
+                    break;
+                }
+                switch (CursorCurrent - CursorStart)
+                {
+                    case 1:
+                    case 2:
+                        if (BinaryOperators.ContainsKey(Source.Text[CursorStart..CursorCurrent]))
+                        {
+                            Source.LexLine.Add(new(BinaryOperators[Source.Text[CursorStart..CursorCurrent]],
+                                Source.Text[CursorStart..CursorCurrent], CursorStart, CursorCurrent));
+                            if (BinaryOperators[Source.Text[CursorStart..CursorCurrent]] == Token.Type.BINARY_EQUAL)
+                                EqualFound = true;
+                        }
+                        break;
+                    default:
+                        throw new SyntaxError(233, CursorCurrent, Source);
+                }
+                break;
             default:
                 throw new ApplicationException("Unhandled case in Lexer.");
         }
@@ -542,7 +506,7 @@ public partial class Lexer
 
     public void Lex(SourceLine source)
     {
-        Debug.Assert(source != null, nameof(Source) + " != null");
+        Debug.Assert(source != null, "Source line is null");
 
         BracketStack.Clear();
         ColonFound = false;
@@ -551,6 +515,7 @@ public partial class Lexer
         UnconditionalGoToFound = false;
         CursorStart = CursorCurrent = 0;
         PatternMatchFound = false;
+        EqualFound = false;
         SecondGotoPosition = -1;
         Source = source;
 
@@ -559,8 +524,8 @@ public partial class Lexer
         while (true)
         {
             NextState = Delta[State, Source.Text[CursorCurrent]];
-            Console.WriteLine("State: " + State + "  CursorCurrent: " + CursorCurrent +
-                              "  Char: " + Source.Text[CursorCurrent] + "  NextState: " + NextState);
+            //Console.WriteLine("State: " + State + "  CursorCurrent: " + CursorCurrent +
+            //                  "  Char: " + Source.Text[CursorCurrent] + "  NextState: " + NextState);
             if (NextState > 100)
                 throw new SyntaxError(NextState, CursorCurrent, Source);
             if (State != NextState && NextState >= 0)

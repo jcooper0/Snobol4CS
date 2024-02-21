@@ -8,12 +8,12 @@ namespace TestInteractive
         {
             bool debugTrace = true;
 
-            string path = @"..\..\..\test.sbl";
+            //string path = @"..\..\..\test.sbl";
             //string path = @"..\..\..\TestArgumentList.sno";
             //string path = @"..\..\..\TestNullArguments.sno";
             //string path = @"..\..\..\TestConditional.sno";
             //string path = @"..\..\..\TestArrayTable.sno";
-            //tring path = @"C:\Users\jcooper\Documents\Desktop\Beautiful\Beautiful.sno";
+            string path = @"C:\Users\jcooper\Documents\Desktop\Beautiful\Beautiful.sno";
             //string path = @"..\..\..\errors.sno";
             //string path = @"..\..\..\TestMatch.sno";
             Compiler compiler = new();
