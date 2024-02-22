@@ -191,7 +191,7 @@ public partial class Lexer
         return entryLabel;
     }
 
-    public static Regex UnaryDeletePattern =
+    private static readonly Regex UnaryDeletePattern =
         new(@"\A[\t ]*[)>:\]]", RegexOptions.Compiled);
 
     public bool IsUnaryDelete()
@@ -292,9 +292,10 @@ public partial class Lexer
         }
     }
 
-    public static Regex BinaryOperator1 =
+    private static Regex BinaryOperator1 =
         new(@"\A([ \t]+)[\*\~\?\$\.\!\^\%\/\#\+\-\@\|\&\=][ \t]", RegexOptions.Compiled);
-    public static Regex BinaryOperator2 =
+
+    private static Regex BinaryOperator2 =
         new(@"\A([ \t]+)\*\*[ \t]", RegexOptions.Compiled);
 
     public void Accept()

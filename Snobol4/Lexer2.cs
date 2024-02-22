@@ -1,39 +1,35 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using static Snobol4.Lexer;
-
+using System.CodeDom;
+using System.CodeDom.Compiler;
+using System.Runtime.CompilerServices;
 namespace Snobol4;
 
 internal class Lexer2
 {
+    private static readonly RegexOptions Options = RegexOptions.None;
+
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(2);
 
-    internal static readonly Regex Label = new(@"\A([A-Za-z\d_][^ \t]*)",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Label = new(@"\A([A-Za-z\d_][^ \t]*)", Options, Timeout);
 
-    internal static readonly Regex Space = new(@"\A[ \t]+",
-        RegexOptions.Compiled);
+    internal static readonly Regex Space = new(@"\A[ \t]+", Options, Timeout);
 
-    internal static readonly Regex StringLiteralD = new(@"\A\""[^\""]*\""",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex StringLiteralD = new(@"\A\""[^\""]*\""", Options, Timeout);
 
-    internal static readonly Regex StringLiteralS = new(@"\A\'[^\']*\'",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex StringLiteralS = new(@"\A\'[^\']*\'", Options, Timeout);
 
-    internal static readonly Regex Operator = new(@"\A([~?$.!^%*/#+@|&=\-]+)",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Operator = new(@"\A([~?$.!^%*/#+@|&=\-]+)", Options, Timeout);
 
-    internal static readonly Regex Integer = new(@"\A[0123456789]+",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Integer = new(@"\A[0-9]+", Options, Timeout);
 
-    internal static readonly Regex Real1 = new(@"\A[0123456789]+.[0123456789]*([Ee][+-]?[0123456789]+)?",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Real1 = new(@"\A[0-9]+.[0-9]*([Ee][+-]?[0-9]+)?", Options, Timeout);
 
-    internal static readonly Regex Real2 = new(@"\A[0123456789]+[Ee][+-]?[0123456789]+",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Real2 = new(@"\A[0-9]+[Ee][+-]?[0-9]+", Options, Timeout);
 
-    internal static readonly Regex Identifier = new(@"\A[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ][abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*",
-        RegexOptions.Compiled, Timeout);
+    internal static readonly Regex Identifier = new(@"\A[a-zA-Z][a-zA-Z0-9_]*", Options, Timeout);
 
     #region Properties
 
@@ -154,7 +150,6 @@ internal class Lexer2
 
     #endregion
 
-
     public void Lex(SourceLine source)
     {
         Debug.Assert(source != null, "Source line is null");
@@ -168,6 +163,7 @@ internal class Lexer2
 
         while (cursorCurrent < source.Text.Length)
         {
+            
             m = Space.Match(source.Text[cursorCurrent..]);
             if (m.Success)
             {
@@ -193,7 +189,7 @@ internal class Lexer2
                 continue;
             }
 
-            m = Real1.Match(source.Text[cursorCurrent..]);
+            m = Real2.Match(source.Text[cursorCurrent..]);
             if (m.Success)
             {
                 source.LexLine.Add(new(Token.Type.REAL, m.Value, cursorCurrent, cursorCurrent + m.Length));

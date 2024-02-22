@@ -1,8 +1,10 @@
-﻿namespace Snobol4;
+﻿using System.Diagnostics;
+
+namespace Snobol4;
 
 public class Compiler
 {
-    internal Lexer2 Lex
+    internal Lexer Lex
     {
         get; set;
     }
@@ -21,7 +23,7 @@ public class Compiler
 
     public Compiler()
     {
-        Lex = new Lexer2();
+        Lex = new Lexer();
         Parse = new Parser();
         Source = new SourceFile();
     }
@@ -30,6 +32,9 @@ public class Compiler
     {
         if (!Source.ReadSourceToList(path))
             return;
+
+        Stopwatch sw = new();
+        sw.Start();
         foreach (SourceLine line in Source.SourceLines)
         {
             try
@@ -57,7 +62,7 @@ public class Compiler
                 Console.WriteLine(e.Description);
             }
         }
-
+        Console.WriteLine(sw.ElapsedMilliseconds + " ms");
         if (!Lex.Labels.ContainsKey("END"))
         {
             SyntaxError e = new(216);
